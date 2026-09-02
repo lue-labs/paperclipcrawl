@@ -113,7 +113,7 @@ api,store,sync,query,output}.ts` · `test/*.test.ts`.
 # With the API unreachable, reads still serve the last synced board:
 paperclipcrawl issue list --api-base http://127.0.0.1:9/ --json | jq length
 
-# After a sync, a sample identifier matches live:
-diff <(paperclipcrawl issue get CCS-12 --raw | jq -S '{id,identifier,title,status}') \
-     <(paperclipai issue get CCS-12 --json  | jq -S '{id,identifier,title,status}')
+# After a sync, a sample identifier matches live (scripts/parity-check.sh wraps this):
+scripts/parity-check.sh ccs            # newest issue in the mirror
+scripts/parity-check.sh ccs CCS-12     # a specific identifier
 ```
