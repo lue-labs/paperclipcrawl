@@ -1,5 +1,119 @@
 # paperclipcrawl
 
-Offline SQLite mirror for Paperclip (OpenClaw crawl-family sibling).
+Offline SQLite mirror for [Paperclip](https://github.com/paperclipai/paperclip) — the
+crawl-family sibling (`gitcrawl` / `discrawl` / `slacrawl`) for board data.
 
-See: ~/Projects/personal/agent-system/designs/paperclip-offline-sqlite-cache.md
+- **Read path** when the API is down, slow, or rate-limited: `search`, `issue list|get`, `sql`.
+- **Never a write path.** Mutations stay on `paperclipai`; the client here is GET-only.
+- **No secrets in SQLite.** Reuses `paperclipai` auth files in memory only; agent adapter
+  configs, project env, and anything key-shaped are redacted before write. `doctor` verifies.
+
+Design: [`docs/design.md`](docs/design.md) (source of truth:
+`~/Projects/personal/agent-system/designs/paperclip-offline-sqlite-cache.md`).
+
+## Quick start
+
+```sh
+paperclipcrawl init                 # creates ~/Library/Application Support/paperclipcrawl/paperclipcrawl.db
+paperclipcrawl doctor               # paths, WAL, FTS5, auth source, no-secrets scan
+paperclipcrawl sync --all           # every profile in ~/.paperclip/context.json
+paperclipcrawl status               # counts, per-company freshness, last errors
+
+paperclipcrawl search "sync lock" --with-comments
+paperclipcrawl issue list --status in_progress,blocked
+paperclipcrawl issue get CCS-12
+paperclipcrawl sql "select identifier, status, title from issues where status='blocked' order by updated_at desc"
+```
+
+`sync` uses the current profile by default; `--profile NAME`, `--company-id ID`, or `--all`
+select others. Incremental after the first run (cursor on `updatedAt`); `--full` re-lists and
+prunes; `--since ISO` bounds a pull; `--if-stale 5m` makes it a cheap no-op when fresh.
+`sync issue <id|IDENTIFIER>` deep-hydrates one thread.
+
+Read commands never touch the network. They print a one-line stderr hint when the mirror is
+older than 30 min (`PAPERCLIPCRAWL_STALE_AFTER_MS` to tune).
+
+## Auth and profiles
+
+Resolution mirrors `paperclipai` exactly, so no new configuration:
+
+| Value | Order |
+|---|---|
+| API base | `--api-base` → `PAPERCLIP_API_URL` → profile `apiBase` → `http://localhost:3100` |
+| Company | `--company-id` → `PAPERCLIP_COMPANY_ID` → profile `companyId` |
+| Token | `--api-key` → `PAPERCLIP_API_KEY` → profile `apiKeyEnvVarName` → `~/.paperclip/auth.json[apiBase].token` |
+| Context file | `--context` → `PAPERCLIP_CONTEXT` → nearest ancestor `.paperclip/context.json` → `$PAPERCLIP_HOME/context.json` |
+
+`doctor` reports only the *source kind* (`stored_board`, `env`, …), never the token.
+
+## Data location
+
+| OS | Path |
+|---|---|
+| macOS | `~/Library/Application Support/paperclipcrawl/paperclipcrawl.db` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/paperclipcrawl/paperclipcrawl.db` |
+| Override | `--db PATH` or `PAPERCLIPCRAWL_DB` |
+
+Dir `0700`, DB `0600`, WAL journal. Shared by every agent running as the same user; concurrent
+`sync` invocations are serialised by `.paperclipcrawl-sync.lock` (stale locks are reclaimed).
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | ok |
+| 1 | error (sync fully failed, doctor failed, status on missing DB) |
+| 2 | partial sync / rejected SQL |
+| 3 | not in mirror (missing DB or unknown issue) |
+| 64 | usage |
+| 75 | sync lock held by another process |
+
+## Install
+
+Requires [Bun](https://bun.sh) ≥ 1.3 to build; the result is a self-contained binary (no
+runtime deps).
+
+```sh
+git clone <this repo> ~/Projects/personal/paperclipcrawl
+cd ~/Projects/personal/paperclipcrawl
+bun install
+bun test
+bun run build              # → dist/paperclipcrawl
+bun run install:local      # → ~/.local/bin/paperclipcrawl (PAPERCLIPCRAWL_INSTALL_DIR to change)
+paperclipcrawl doctor
+```
+
+Upgrade: `git pull && bun run install:local`.
+
+### m2-max (lukes-macbook-pro) — done 2026-09-02
+
+- Binary: `~/.local/bin/paperclipcrawl` (arm64, built from this branch).
+- DB: `~/Library/Application Support/paperclipcrawl/paperclipcrawl.db`.
+- Skill routing: `~/Projects/personal/skills/paperclip/SKILL.md` (offline reads → paperclipcrawl).
+- Tool doc: `~/Projects/agent-scripts/TOOLS/paperclipcrawl.md` + `TOOLS.md` index entry.
+
+Sync the skill and TOOLS docs to another machine the same way the rest of `skills/` and
+`agent-scripts/` are synced (git pull in both repos); the binary is per-arch, so rebuild there
+with `bun run install:local`.
+
+## Development
+
+```sh
+bun run dev -- status --json      # run from source
+bun run typecheck
+bun test                          # stubbed API reader — never hits the network
+```
+
+Layout: `src/cli.ts` (arg parsing + commands) · `src/lib/{paths,schema,db,redact,lock,context,
+api,store,sync,query,output}.ts` · `test/*.test.ts`.
+
+## Proof of purpose
+
+```sh
+# With the API unreachable, reads still serve the last synced board:
+paperclipcrawl issue list --api-base http://127.0.0.1:9/ --json | jq length
+
+# After a sync, a sample identifier matches live:
+diff <(paperclipcrawl issue get CCS-12 --raw | jq -S '{id,identifier,title,status}') \
+     <(paperclipai issue get CCS-12 --json  | jq -S '{id,identifier,title,status}')
+```

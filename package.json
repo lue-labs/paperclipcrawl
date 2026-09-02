@@ -1,0 +1,24 @@
+{
+  "name": "paperclipcrawl",
+  "version": "0.1.0",
+  "description": "Offline SQLite mirror for Paperclip (OpenClaw crawl-family sibling). Read-only: mutations stay on paperclipai.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "paperclipcrawl": "./src/cli.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit",
+    "build": "bun build src/cli.ts --compile --minify --sourcemap --outfile dist/paperclipcrawl",
+    "install:local": "bun run build && install -m 755 dist/paperclipcrawl \"${PAPERCLIPCRAWL_INSTALL_DIR:-$HOME/.local/bin}/paperclipcrawl\""
+  },
+  "engines": {
+    "bun": ">=1.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  }
+}
