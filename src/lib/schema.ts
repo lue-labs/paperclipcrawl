@@ -51,6 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_issues_company_updated ON issues(company_id, upda
 CREATE INDEX IF NOT EXISTS idx_issues_identifier      ON issues(identifier);
 CREATE INDEX IF NOT EXISTS idx_issues_assignee        ON issues(company_id, assignee_agent_id);
 CREATE INDEX IF NOT EXISTS idx_issues_project         ON issues(company_id, project_id);
+CREATE INDEX IF NOT EXISTS idx_issues_synced          ON issues(company_id, synced_at);
 
 CREATE TABLE IF NOT EXISTS comments (
   id               TEXT PRIMARY KEY,
@@ -66,6 +67,7 @@ CREATE TABLE IF NOT EXISTS comments (
   raw_json         TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_comments_issue ON comments(issue_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_comments_synced ON comments(synced_at);
 
 CREATE TABLE IF NOT EXISTS approvals (
   id                     TEXT PRIMARY KEY,
@@ -79,6 +81,7 @@ CREATE TABLE IF NOT EXISTS approvals (
   raw_json               TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_approvals_company_status ON approvals(company_id, status);
+CREATE INDEX IF NOT EXISTS idx_approvals_synced ON approvals(company_id, synced_at);
 
 CREATE TABLE IF NOT EXISTS agents (
   id          TEXT PRIMARY KEY,
@@ -94,6 +97,7 @@ CREATE TABLE IF NOT EXISTS agents (
   raw_json    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_agents_company ON agents(company_id, name);
+CREATE INDEX IF NOT EXISTS idx_agents_synced ON agents(company_id, synced_at);
 
 CREATE TABLE IF NOT EXISTS projects (
   id             TEXT PRIMARY KEY,
@@ -107,6 +111,7 @@ CREATE TABLE IF NOT EXISTS projects (
   raw_json       TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_projects_company ON projects(company_id, name);
+CREATE INDEX IF NOT EXISTS idx_projects_synced ON projects(company_id, synced_at);
 
 CREATE TABLE IF NOT EXISTS sync_state (
   profile        TEXT NOT NULL,

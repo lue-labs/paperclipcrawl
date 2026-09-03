@@ -27,7 +27,8 @@ Commands
   doctor [--json]                    Check paths, schema, WAL, FTS5, auth resolution, no-secrets
   status [--json]                    crawlkit.control.v1 control surface: counts, last sync, staleness
   sync [--profile N | --all] [--company-id ID] [--since ISO] [--full]
-       [--comments none|changed|all] [--if-stale 5m] [--json] [--quiet]
+       [--comments none|changed|all] [--if-stale 5m] [--timeout 20s] [--retries 3]
+       [--concurrency 4] [--json] [--quiet]
                                      Pull companies/issues/comments/approvals/agents/projects
   sync issue <idOrIdentifier>        Deep-hydrate one issue + its full comment thread
   search <query> [--company-id ID] [--status csv] [--comments] [--limit N] [--json]
@@ -59,7 +60,7 @@ interface Opts {
   json?: boolean; help?: boolean; version?: boolean; all?: boolean; full?: boolean; since?: string;
   comments?: string; ifStale?: string; quiet?: boolean; vacuum?: boolean; status?: string;
   assigneeAgentId?: string; projectId?: string; match?: string; limit?: string; raw?: boolean;
-  includeComments?: boolean; concurrency?: string;
+  includeComments?: boolean; concurrency?: string; timeout?: string; retries?: string;
 }
 
 function parse(argv: string[]): { opts: Opts; positionals: string[] } {
@@ -92,6 +93,8 @@ function parse(argv: string[]): { opts: Opts; positionals: string[] } {
       raw: { type: "boolean" },
       "with-comments": { type: "boolean" },
       concurrency: { type: "string" },
+      timeout: { type: "string" },
+      retries: { type: "string" },
     },
   });
   const v = values as Record<string, string | boolean | undefined>;
@@ -105,6 +108,7 @@ function parse(argv: string[]): { opts: Opts; positionals: string[] } {
       assigneeAgentId: v["assignee-agent-id"] as string | undefined, projectId: v["project-id"] as string | undefined,
       match: v.match as string | undefined, limit: v.limit as string | undefined, raw: Boolean(v.raw),
       includeComments: Boolean(v["with-comments"]), concurrency: v.concurrency as string | undefined,
+      timeout: v.timeout as string | undefined, retries: v.retries as string | undefined,
     },
     positionals,
   };
@@ -119,6 +123,25 @@ function csv(v?: string): string[] | undefined {
 function fail(msg: string, code = 1): never {
   process.stderr.write(`${msg}\n`);
   process.exit(code);
+}
+
+/** HTTP tuning for sync: --timeout/--retries > PAPERCLIPCRAWL_TIMEOUT/_RETRIES > 20s / 3. */
+function clientTuning(opts: Opts): { timeoutMs?: number; retries?: number } {
+  const t = opts.timeout ?? process.env.PAPERCLIPCRAWL_TIMEOUT;
+  const r = opts.retries ?? process.env.PAPERCLIPCRAWL_RETRIES;
+  const out: { timeoutMs?: number; retries?: number } = {};
+  if (t) {
+    let ms = 0;
+    try { ms = parseDuration(t); } catch { fail(`invalid --timeout: ${t} (use e.g. 20s, 2m)`, 64); }
+    if (ms <= 0) fail(`invalid --timeout: ${t} (must be > 0)`, 64);
+    out.timeoutMs = ms;
+  }
+  if (r !== undefined) {
+    const n = Number(r);
+    if (!Number.isInteger(n) || n < 0) fail(`invalid --retries: ${r}`, 64);
+    out.retries = n;
+  }
+  return out;
 }
 
 /** Company scope for read commands: --company-id > PAPERCLIP_COMPANY_ID > profile.companyId (if --profile given) > all. */
@@ -326,7 +349,7 @@ async function cmdSync(opts: Opts, positionals: string[]): Promise<void> {
     migrate(db);
     const lock = acquireLock(lockPathForDb(dbPath));
     try {
-      const api = new ApiClient({ apiBase: target.apiBase, apiKey: target.apiKey });
+      const api = new ApiClient({ apiBase: target.apiBase, apiKey: target.apiKey, ...clientTuning(opts) });
       const res = await syncOneIssue(db, api, id);
       if (opts.json) printJson({ ok: true, issue_id: res.issue.id, identifier: res.issue.identifier ?? null, comments: res.comments });
       else process.stdout.write(`synced ${res.issue.identifier ?? res.issue.id} (${res.comments} comments)\n`);
@@ -385,7 +408,7 @@ async function cmdSync(opts: Opts, positionals: string[]): Promise<void> {
   try {
     for (const t of targets) {
       if (t.authSource === "none") log(`[${t.profileName}] warning: no credential resolved; requests will be unauthenticated`);
-      const api = new ApiClient({ apiBase: t.apiBase, apiKey: t.apiKey });
+      const api = new ApiClient({ apiBase: t.apiBase, apiKey: t.apiKey, ...clientTuning(opts) });
       const r = await syncCompany(db, api, t, { full: opts.full, since: opts.since, comments, concurrency, log });
       results.push(r);
     }

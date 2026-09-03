@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { syncCompany, syncOneIssue, ISSUE_PAGE } from "../src/lib/sync.ts";
-import { getSyncState } from "../src/lib/store.ts";
+import { getSyncState, syncStamp, upsertIssue } from "../src/lib/store.ts";
 import { getIssue, listIssues } from "../src/lib/query.ts";
 import { comment, COMPANY_ID, issue, StubReader, TARGET, tmpDb } from "./helpers.ts";
 
@@ -99,5 +99,33 @@ describe("sync engine", () => {
     expect(r.comments).toBe(2);
     expect(getIssue(t.db, "TST-7")?.comments).toHaveLength(2);
     await expect(syncOneIssue(t.db, stub, "TST-404")).rejects.toThrow();
+  });
+
+  test("full sync prunes a row stamped in the same millisecond the run starts (stamps are strictly monotonic)", async () => {
+    // Regression: prune is `synced_at < startedAt`. A row written in the same ms as the next run's start
+    // used to survive pruning. Plant a stale row stamped "now" and immediately run a full sync.
+    const t = tmpDb(); cleanup = t.cleanup;
+    const live = issue(1, { status: "todo" });
+    const stale = issue(2, { status: "todo" });
+    const stub = new StubReader({ issues: [live], comments: {} });
+    upsertIssue(t.db, stale, new Date().toISOString());
+    upsertIssue(t.db, live, new Date().toISOString());
+
+    const r = await syncCompany(t.db, stub, TARGET, { full: true, comments: "none" });
+    expect(r.status).toBe("ok");
+    expect(r.entities.find((e) => e.entity === "issues")?.pruned).toBe(1);
+    expect(listIssues(t.db, { companyId: COMPANY_ID }).map((i) => i.identifier)).toEqual(["TST-1"]);
+
+    // Stamp property itself: strictly greater than the newest stamp present, even when called back-to-back.
+    const a = syncStamp(t.db);
+    upsertIssue(t.db, live, a);
+    const b = syncStamp(t.db);
+    expect(Date.parse(b)).toBeGreaterThan(Date.parse(a));
+
+    // Clock step-back: a stamp in the future must not stall; we step just past it.
+    const future = new Date(Date.now() + 5_000).toISOString();
+    upsertIssue(t.db, live, future);
+    const c = syncStamp(t.db);
+    expect(Date.parse(c)).toBe(Date.parse(future) + 1);
   });
 });

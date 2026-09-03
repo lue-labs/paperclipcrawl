@@ -11,8 +11,11 @@ profile=${1:?profile}
 ident=${2:-}
 fields='{id,identifier,title,status,priority,assigneeAgentId,updatedAt}'
 
-if ! paperclipcrawl sync --profile "$profile" --comments none --quiet; then
-  echo "sync failed for profile $profile (API down?)" >&2
+# Sync is best-effort: a partial sync (exit 2, e.g. agents timed out) still refreshes issues.
+# Only a hard failure with nothing to compare is a precondition error.
+paperclipcrawl sync --profile "$profile" --comments none --quiet || rc=$?
+if [[ ${rc:-0} -ne 0 && ${rc:-0} -ne 2 ]]; then
+  echo "sync failed for profile $profile (exit $rc; API down?)" >&2
   exit 2
 fi
 if [[ -z "$ident" ]]; then
@@ -21,7 +24,8 @@ if [[ -z "$ident" ]]; then
 fi
 
 mirror=$(paperclipcrawl issue get "$ident" --profile "$profile" --raw | jq -S "$fields")
-live=$(paperclipai --profile "$profile" issue get "$ident" --json | jq -S "$fields")
+# paperclipai takes --profile per subcommand, not globally.
+live=$(paperclipai issue get "$ident" --profile "$profile" --json | jq -S "$fields")
 
 if diff <(echo "$mirror") <(echo "$live") >/dev/null; then
   echo "PARITY OK  $ident  (profile=$profile)"

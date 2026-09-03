@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { apiPath, ApiRequestError, describeApiError, type PaperclipReader } from "./api.ts";
 import type { ResolvedTarget } from "./context.ts";
 import {
-  deleteCommentsNotSyncedSince, getSyncState, markCommentsSynced, pruneNotSyncedSince, putSyncState,
+  deleteCommentsNotSyncedSince, getSyncState, markCommentsSynced, pruneNotSyncedSince, putSyncState, syncStamp,
   upsertAgent, upsertApproval, upsertComment, upsertCompany, upsertIssue, upsertProject,
 } from "./store.ts";
 
@@ -50,6 +50,12 @@ export interface CompanySyncResult {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/** Write stamp within a run: wall clock, but never below `startedAt` so this run's rows always survive its own prune. */
+function runStamp(startedAt: string): string {
+  const now = nowIso();
+  return now > startedAt ? now : startedAt;
 }
 
 function asArray<T = Rec>(v: unknown): T[] {
@@ -139,7 +145,7 @@ export async function hydrateComments(db: Database, api: PaperclipReader, issueI
   await mapLimit(issueIds, concurrency, async (issueId) => {
     try {
       const comments = await fetchAllComments(api, issueId);
-      const at = nowIso();
+      const at = syncStamp(db); // strictly after any existing stamp, so the replace below cannot miss same-ms rows
       db.transaction(() => {
         for (const c of comments) upsertComment(db, c, at);
         deleteCommentsNotSyncedSince(db, issueId, at);
@@ -159,7 +165,7 @@ export async function syncCompany(db: Database, api: PaperclipReader, target: Re
   if (!target.companyId) throw new Error(`Profile '${profile}' has no companyId.`);
   const companyId: string = target.companyId;
   const log = opts.log ?? (() => {});
-  const startedAt = nowIso();
+  const startedAt = syncStamp(db); // prune predicates are `synced_at < startedAt`; must be strictly after the previous run
   const entities: EntityResult[] = [];
   const commentsMode = opts.comments ?? "changed";
   const concurrency = opts.concurrency ?? 4;
@@ -193,7 +199,7 @@ export async function syncCompany(db: Database, api: PaperclipReader, target: Re
   for (const d of directory) {
     try {
       const rows = asArray(await api.get(d.path));
-      const at = nowIso();
+      const at = runStamp(startedAt);
       db.transaction(() => {
         for (const r of rows) d.upsert(r);
       })();
@@ -215,7 +221,7 @@ export async function syncCompany(db: Database, api: PaperclipReader, target: Re
   let changedIds: string[] = [];
   try {
     const rows = await fetchIssues(api, companyId, since, log);
-    const at = nowIso();
+    const at = runStamp(startedAt);
     const prevUpdated = new Map<string, string | null>();
     if (rows.length > 0) {
       const ids = rows.map((r) => String(r.id));
@@ -296,7 +302,7 @@ export async function syncCompany(db: Database, api: PaperclipReader, target: Re
 export async function syncOneIssue(db: Database, api: PaperclipReader, idOrIdentifier: string): Promise<{ issue: Rec; comments: number }> {
   const issue = await api.get<Rec>(apiPath`/api/issues/${idOrIdentifier}`);
   if (!issue || typeof issue.id !== "string") throw new Error(`Issue not found upstream: ${idOrIdentifier}`);
-  const at = nowIso();
+  const at = syncStamp(db);
   upsertIssue(db, issue, at);
   const comments = await fetchAllComments(api, issue.id);
   db.transaction(() => {

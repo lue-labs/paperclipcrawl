@@ -18,7 +18,21 @@ export interface ApiClientOptions {
   apiBase: string;
   apiKey?: string;
   timeoutMs?: number;
+  /** Extra attempts for transient failures (timeout, connection error, 429/5xx). Default 3. */
+  retries?: number;
+  /** Base backoff for retries; each attempt doubles it, capped at 8× base. Default 1000. */
+  retryBaseMs?: number;
   fetchImpl?: typeof fetch;
+  sleepImpl?: (ms: number) => Promise<void>;
+}
+
+/** Statuses worth retrying: the API was there but not ready. 4xx other than 429 are terminal. */
+const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+export function isRetryableError(err: unknown): boolean {
+  if (err instanceof ApiConnectionError) return true;
+  if (err instanceof ApiRequestError) return RETRYABLE_STATUS.has(err.status);
+  return false;
 }
 
 export interface PaperclipReader {
@@ -29,13 +43,19 @@ export class ApiClient implements PaperclipReader {
   readonly apiBase: string;
   private readonly apiKey?: string;
   private readonly timeoutMs: number;
+  private readonly retries: number;
+  private readonly retryBaseMs: number;
   private readonly fetchImpl: typeof fetch;
+  private readonly sleepImpl: (ms: number) => Promise<void>;
 
   constructor(opts: ApiClientOptions) {
     this.apiBase = opts.apiBase.replace(/\/+$/, "");
     this.apiKey = opts.apiKey?.trim() || undefined;
     this.timeoutMs = opts.timeoutMs ?? 20_000;
+    this.retries = Math.max(0, opts.retries ?? 3);
+    this.retryBaseMs = Math.max(0, opts.retryBaseMs ?? 1000);
     this.fetchImpl = opts.fetchImpl ?? fetch;
+    this.sleepImpl = opts.sleepImpl ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
 
   buildUrl(p: string): string {
@@ -47,7 +67,19 @@ export class ApiClient implements PaperclipReader {
     return url.toString();
   }
 
+  /** GET with bounded retry on transient failures. Never retries 401/403/404 — those are answers. */
   async get<T>(p: string): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.getOnce<T>(p);
+      } catch (err) {
+        if (attempt >= this.retries || !isRetryableError(err)) throw err;
+        await this.sleepImpl(Math.min(this.retryBaseMs * 2 ** attempt, this.retryBaseMs * 8));
+      }
+    }
+  }
+
+  private async getOnce<T>(p: string): Promise<T> {
     const url = this.buildUrl(p);
     const headers: Record<string, string> = { accept: "application/json" };
     if (this.apiKey) headers.authorization = `Bearer ${this.apiKey}`;

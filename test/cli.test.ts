@@ -93,7 +93,7 @@ describe("cli (offline reads never touch the network)", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "paperclipcrawl-home-"));
     fs.writeFileSync(path.join(home, "context.json"), JSON.stringify({ version: 2, currentProfile: "t", profiles: { t: { apiBase: "http://127.0.0.1:9", companyId: COMPANY_ID } } }));
     const env = { PAPERCLIPCRAWL_DB: dbPath, PAPERCLIP_HOME: home, PAPERCLIP_API_KEY: "dummy" };
-    const r = run(["sync", "--json"], env);
+    const r = run(["sync", "--json", "--retries", "0"], env);
     expect(r.code).not.toBe(0);
     const j = JSON.parse(r.out);
     expect(j.status).toBe("error");

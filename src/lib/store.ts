@@ -57,6 +57,30 @@ export function upsertComment(db: Database, comment: Rec, syncedAt: string): voi
   );
 }
 
+/**
+ * ISO timestamp for stamping `synced_at`, guaranteed strictly greater than every stamp already in the
+ * DB. Prune/replace predicates are `synced_at < stamp`; with plain millisecond clocks a run that starts
+ * in the same millisecond as the previous run's last write would silently prune nothing. Waits (≤1 ms
+ * per collision) rather than fabricating future timestamps, so stamps stay honest wall-clock values.
+ */
+export function syncStamp(db: Database): string {
+  const floor = db.query<{ m: string | null }, []>(
+    "SELECT max(m) AS m FROM (SELECT max(synced_at) m FROM issues UNION ALL SELECT max(synced_at) FROM comments " +
+    "UNION ALL SELECT max(synced_at) FROM approvals UNION ALL SELECT max(synced_at) FROM agents " +
+    "UNION ALL SELECT max(synced_at) FROM projects UNION ALL SELECT max(synced_at) FROM companies)",
+  ).get()?.m ?? null;
+  const floorMs = floor === null ? Number.NaN : Date.parse(floor);
+  if (!Number.isFinite(floorMs)) return new Date().toISOString();
+  for (;;) {
+    const now = Date.now();
+    if (now > floorMs) return new Date(now).toISOString();
+    // Floor is at/after the clock: same-millisecond collision (wait it out) or the wall clock moved
+    // backwards since the last sync (don't wait; step past the floor so pruning stays correct).
+    if (floorMs - now > 50) return new Date(floorMs + 1).toISOString();
+    Bun.sleepSync(1);
+  }
+}
+
 export function markCommentsSynced(db: Database, issueId: string, at: string): void {
   db.query("UPDATE issues SET comments_synced_at=? WHERE id=?").run(at, issueId);
 }
