@@ -4,9 +4,17 @@ Use this guide to install paperclipcrawl on another macOS/Linux device, enable a
 
 ## 1. Obtain the source
 
-There is currently no Git remote or published release. Do not use the README's old placeholder clone URL or assume local skills/docs commits have been pushed.
+Clone the public source (the implementation is on the draft-PR branch until merged):
 
-On the source Mac, export the committed implementation:
+```sh
+mkdir -p ~/Projects/personal
+git clone --branch lue/paperclip-offline-cache https://github.com/lue-labs/paperclipcrawl.git ~/Projects/personal/paperclipcrawl
+cd ~/Projects/personal/paperclipcrawl
+```
+
+No binary release is published yet. Do not assume companion skills/docs commits have been pushed.
+
+For offline source transfer only, use this alternative instead of the clone above. On the source Mac, export the committed implementation:
 
 ```sh
 git -C ~/.herdr/worktrees/paperclipcrawl/lue-paperclip-offline-cache bundle create /tmp/paperclipcrawl.bundle lue/paperclip-offline-cache

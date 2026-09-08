@@ -72,13 +72,13 @@ Dir `0700`, DB `0600`, WAL journal. Shared by every agent running as the same us
 
 **New devices and agents:** follow [Device and agent onboarding](docs/onboarding.md)
 for source transfer, PATH, authentication, skill discovery, and acceptance checks.
-No hosted remote/release is currently configured; use the documented Git bundle transfer.
+Source: https://github.com/lue-labs/paperclipcrawl. Build from source; no binary release is published yet.
 
 Requires [Bun](https://bun.sh) ≥ 1.3 to build; the result is a self-contained binary (no
 runtime deps).
 
 ```sh
-# Obtain the source using docs/onboarding.md first.
+git clone --branch lue/paperclip-offline-cache https://github.com/lue-labs/paperclipcrawl.git ~/Projects/personal/paperclipcrawl
 cd ~/Projects/personal/paperclipcrawl
 bun install
 bun test
@@ -87,9 +87,7 @@ bun run install:local      # → ~/.local/bin/paperclipcrawl (PAPERCLIPCRAWL_INS
 paperclipcrawl doctor
 ```
 
-Upgrade: fetch the latest committed source through your configured remote or a fresh
-Git bundle, then run `bun run install:local`. A bundle-only clone cannot pull new
-updates automatically.
+Upgrade: `git pull --ff-only && bun run install:local`.
 
 ### m2-max (lukes-macbook-pro) — done 2026-09-02
 
