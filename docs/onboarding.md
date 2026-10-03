@@ -8,7 +8,7 @@ Clone the public source (the implementation is on the draft-PR branch until merg
 
 ```sh
 mkdir -p ~/Projects/personal
-git clone --branch lue/paperclip-offline-cache https://github.com/lue-labs/paperclipcrawl.git ~/Projects/personal/paperclipcrawl
+git clone --branch lue/paperclip-offline-cache https://github.com/leo-labs-ai/paperclipcrawl.git ~/Projects/personal/paperclipcrawl
 cd ~/Projects/personal/paperclipcrawl
 ```
 
