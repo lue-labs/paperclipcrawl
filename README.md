@@ -1,5 +1,8 @@
 # paperclipcrawl
 
+> **leo-labs** — brand name (Leonardo + leopard). GitHub org slug is still [`lue-labs`](https://github.com/lue-labs) until rename to **`leo-labs-ai`**. This change does not retarget npm `@lue-labs/*`, `ghcr.io/lue-labs/*`, or clone URLs. Decision `leo-labs-rename-20261003`.
+
+
 Offline SQLite mirror for [Paperclip](https://github.com/paperclipai/paperclip) — the
 crawl-family sibling (`gitcrawl` / `discrawl` / `slacrawl`) for board data.
 
