@@ -72,13 +72,13 @@ Dir `0700`, DB `0600`, WAL journal. Shared by every agent running as the same us
 
 **New devices and agents:** follow [Device and agent onboarding](docs/onboarding.md)
 for source transfer, PATH, authentication, skill discovery, and acceptance checks.
-Source: https://github.com/lue-labs/paperclipcrawl. Build from source; no binary release is published yet.
+Source: https://github.com/leo-labs-ai/paperclipcrawl. Build from source; no binary release is published yet.
 
 Requires [Bun](https://bun.sh) ≥ 1.3 to build; the result is a self-contained binary (no
 runtime deps).
 
 ```sh
-git clone --branch lue/paperclip-offline-cache https://github.com/lue-labs/paperclipcrawl.git ~/Projects/personal/paperclipcrawl
+git clone --branch lue/paperclip-offline-cache https://github.com/leo-labs-ai/paperclipcrawl.git ~/Projects/personal/paperclipcrawl
 cd ~/Projects/personal/paperclipcrawl
 bun install
 bun test
